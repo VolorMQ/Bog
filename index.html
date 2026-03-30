@@ -80,6 +80,7 @@ loadLocalBtn.onclick = ()=>{
 };
 
 // --- Обзор файлов на сервере ---
+// --- Список книг для выпадающего меню ---
 const serverBooks = [
   { file: "1.json", title: "Tre fra skoven — Yuri Nikitin" },
   { file: "2.json", title: "Tre i sandene — Yuri Nikitin" },
@@ -87,23 +88,36 @@ const serverBooks = [
   { file: "4.json", title: "Tre i dalen — Yuri Nikitin" }
 ];
 
+// Создаём <select> внутри serverFiles
 loadServerBtn.onclick = () => {
-  serverFiles.innerHTML = "";
+  serverFiles.innerHTML = ""; // очищаем
+  const select = document.createElement("select");
+  const defaultOption = document.createElement("option");
+  defaultOption.textContent = "— Vælg en bog —";
+  defaultOption.value = "";
+  select.appendChild(defaultOption);
+
   serverBooks.forEach(b => {
-    const btn = document.createElement("button");
-    btn.textContent = b.title;
-    btn.onclick = async () => {
-      try {
-        const resp = await fetch(b.file);
-        const text = await resp.text();
-        processText(text, b.file);
-      } catch(e) {
-        alert("Fejl ved indlæsning af fil: " + e);
-      }
-    };
-    serverFiles.appendChild(btn);
+    const opt = document.createElement("option");
+    opt.value = b.file;
+    opt.textContent = b.title;
+    select.appendChild(opt);
   });
+
+  select.onchange = async () => {
+    if (!select.value) return;
+    try {
+      const resp = await fetch(select.value);
+      const text = await resp.text();
+      processText(text, select.value);
+    } catch(e) {
+      alert("Fejl ved indlæsning af fil: " + e);
+    }
+  };
+
+  serverFiles.appendChild(select);
 };
+
 
 function processText(text, filename){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
