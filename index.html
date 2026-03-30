@@ -80,24 +80,29 @@ loadLocalBtn.onclick = ()=>{
 };
 
 // --- Обзор файлов на сервере ---
-loadServerBtn.onclick = async ()=>{
-  try{
-    const resp = await fetch('list.json'); 
-    const files = await resp.json();
-    serverFiles.innerHTML="";
-    files.forEach(f=>{
-      const btn = document.createElement("button");
-      btn.textContent=f;
-      btn.onclick = async ()=>{
-        const textResp = await fetch(f);
-        const text = await textResp.text();
-        processText(text,f);
-      };
-      serverFiles.appendChild(btn);
-    });
-  }catch(e){
-    alert("Ошибка при получении списка файлов: "+e);
-  }
+const serverBooks = [
+  { file: "1.json", title: "Tre fra skoven — Yuri Nikitin" },
+  { file: "2.json", title: "Tre i sandene — Yuri Nikitin" },
+  { file: "3.json", title: "Tre og guderne — Yuri Nikitin" },
+  { file: "4.json", title: "Tre i dalen — Yuri Nikitin" }
+];
+
+loadServerBtn.onclick = () => {
+  serverFiles.innerHTML = "";
+  serverBooks.forEach(b => {
+    const btn = document.createElement("button");
+    btn.textContent = b.title;
+    btn.onclick = async () => {
+      try {
+        const resp = await fetch(b.file);
+        const text = await resp.text();
+        processText(text, b.file);
+      } catch(e) {
+        alert("Fejl ved indlæsning af fil: " + e);
+      }
+    };
+    serverFiles.appendChild(btn);
+  });
 };
 
 function processText(text, filename){
