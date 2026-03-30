@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Читалка FB2 — мобильная</title>
+<style>
+body{margin:0;padding:0;font-family:Georgia,serif;background:#fdf6e3;}
+#bookWrapper{max-width:900px;margin:6rem auto 2rem auto;padding:1rem;background:#fdf6e3;} 
+#bookContainer{min-height:60vh;}
+p.sentence{margin:1em 0;cursor:pointer;line-height:1.6;font-size:1rem;transition:background 0.2s;}
+p.sentence.highlight{background:rgba(255,230,180,0.45);}
+.tooltip{position:absolute;background:#fff8dc;border:1px solid #d4c29d;padding:6px 10px;border-radius:6px;box-shadow:0 6px 12px rgba(0,0,0,0.12);display:none;max-width:46ch;font-size:0.95rem;z-index:100;}
+/* Фиксированные кнопки */
+#controls{
+  position:fixed;
+  top:0; left:0;
+  width:100%;
+  background:#fdf6e3;
+  padding:0.5rem 1rem;
+  box-shadow:0 2px 6px rgba(0,0,0,0.12);
+  z-index:1000;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+}
+button,input,label{margin:0.3rem;}
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <input type="file" id="fileInput" accept=".json">
+  <button id="loadLocalBtn">Загрузить локально</button>
+  <button id="loadServerBtn">Обзор сервера</button>
+  <button id="readBtn">▶ Чтение</button>
+  <button id="pauseBtn">⏸/▶</button>
+  <label>Скорость: <span id="rateVal">0.75</span></label>
+  <input type="range" id="rateSlider" min="0.1" max="1.5" step="0.05" value="0.75">
+</div>
+
+<div id="serverFiles" style="margin:0.5rem 0; padding-top:4rem;"></div>
+<div id="bookWrapper">
+  <h2 id="titleText">— Выберите книгу —</h2>
+  <div id="bookContainer"></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const loadLocalBtn = document.getElementById('loadLocalBtn');
+const loadServerBtn = document.getElementById('loadServerBtn');
+const serverFiles = document.getElementById('serverFiles');
+const bookContainer = document.getElementById('bookContainer');
+const readBtn = document.getElementById('readBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const rateSlider = document.getElementById('rateSlider');
+const rateVal = document.getElementById('rateVal');
+const tooltip = document.getElementById('tooltip');
+const titleText = document.getElementById('titleText');
+
+let sentencesDA=[],translationsRU=[];
+let ttsRate = parseFloat(rateSlider.value);
+let readingIndex=0,reading=false,paused=false;
+
+// --- Ползунок скорости ---
+rateSlider.oninput = ()=>{
+  ttsRate=parseFloat(rateSlider.value);
+  rateVal.textContent=ttsRate.toFixed(2);
+};
+
+// --- Локальная загрузка ---
+loadLocalBtn.onclick = ()=>{
+  const f = fileInput.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>processText(reader.result,f.name);
+  reader.readAsText(f);
+};
+
+// --- Обзор файлов на сервере ---
+loadServerBtn.onclick = async ()=>{
+  try{
+    const resp = await fetch('list.json'); 
+    const files = await resp.json();
+    serverFiles.innerHTML="";
+    files.forEach(f=>{
+      const btn = document.createElement("button");
+      btn.textContent=f;
+      btn.onclick = async ()=>{
+        const textResp = await fetch(f);
+        const text = await textResp.text();
+        processText(text,f);
+      };
+      serverFiles.appendChild(btn);
+    });
+  }catch(e){
+    alert("Ошибка при получении списка файлов: "+e);
+  }
+};
+
+function processText(text, filename){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  sentencesDA=[]; translationsRU=[];
+  for(const line of lines){
+    try{
+      const obj=JSON.parse(line);
+      sentencesDA.push({id:obj.sentence_id,text:obj.dan});
+      translationsRU.push({id:obj.sentence_id,text:obj.rus});
+    }catch(e){}
+  }
+  titleText.textContent=filename||'book.json';
+  render();
+}
+
+function render(){
+  bookContainer.innerHTML="";
+  sentencesDA.forEach(s=>{
+    const p=document.createElement("p");
+    p.className="sentence";
+    p.textContent=s.text;
+    p.dataset.id=s.id;
+    bookContainer.appendChild(p);
+  });
+}
+
+// --- Tooltip (отдельно от TTS) ---
+// Сенсор: долгий тап
+let tapTimer=null;
+bookContainer.addEventListener('touchstart', e=>{
+  const p=e.target.closest('p.sentence');
+  if(!p) return;
+  tapTimer=setTimeout(()=>{
+    const tr=translationsRU.find(t=>t.id==p.dataset.id);
+    if(tr){
+      tooltip.style.display='block';
+      const rect=p.getBoundingClientRect();
+      tooltip.style.left=rect.left+'px';
+      tooltip.style.top=(rect.bottom+window.scrollY)+'px';
+      tooltip.textContent=tr.text; // русский
+    }
+  },500);
+});
+bookContainer.addEventListener('touchend', e=>{
+  clearTimeout(tapTimer);
+  tooltip.style.display='none';
+});
+
+// Десктоп: наведение мышью
+bookContainer.addEventListener('mouseover', e=>{
+  const p=e.target.closest('p.sentence');
+  if(!p) return;
+  const tr=translationsRU.find(t=>t.id==p.dataset.id);
+  if(tr){
+    const rect=p.getBoundingClientRect();
+    tooltip.style.left=rect.left+'px';
+    tooltip.style.top=(rect.bottom+window.scrollY)+'px';
+    tooltip.textContent=tr.text; // русский
+    tooltip.style.display='block';
+  }
+});
+bookContainer.addEventListener('mouseout', e=>{
+  tooltip.style.display='none';
+});
+
+// --- Клик на предложение: начать чтение с него ---
+bookContainer.addEventListener('click', e=>{
+  const p=e.target.closest('p.sentence');
+  if(!p) return;
+  readingIndex = Array.from(bookContainer.children).indexOf(p);
+  reading=true; paused=false;
+  speechSynthesis.cancel();
+  highlightNext();
+});
+
+// --- Пауза/возобновление ---
+pauseBtn.onclick = ()=>{
+  if(!reading) return;
+  paused=!paused;
+  if(paused) speechSynthesis.pause();
+  else speechSynthesis.resume();
+};
+
+// --- Подсветка и чтение ---
+function highlightNext(){
+  if(!reading || paused) return;
+  const paragraphs = bookContainer.querySelectorAll("p.sentence");
+  if(readingIndex>0) paragraphs[readingIndex-1].classList.remove("highlight");
+  if(readingIndex>=paragraphs.length){ reading=false; return; }
+
+  const p = paragraphs[readingIndex];
+  p.classList.add("highlight");
+  p.scrollIntoView({behavior:"smooth",block:"center"});
+
+  speakSentence(p.textContent, ()=>{
+    readingIndex++;
+    highlightNext();
+  });
+}
+
+// --- Равномерная TTS ---
+function speakSentence(text, callback){
+  const phrases = text.split(/([,;:.!?])/).reduce((acc, cur)=>{
+    if(/[.,;:!?]/.test(cur)) acc[acc.length-1]+=cur;
+    else acc.push(cur.trim());
+    return acc;
+  },[]).filter(s=>s);
+  let i=0;
+  const next = ()=>{
+    if(i>=phrases.length){ callback(); return; }
+    const u = new SpeechSynthesisUtterance(phrases[i]);
+    u.lang='da-DK';
+    u.rate = ttsRate;
+    u.onend = ()=>{ i++; next(); };
+    speechSynthesis.speak(u);
+  };
+  next();
+}
+
+// --- Кнопка чтения с начала ---
+readBtn.onclick = ()=>{
+  readingIndex=0; reading=true; paused=false;
+  speechSynthesis.cancel();
+  highlightNext();
+};
+</script>
+
+</body>
+</html>
