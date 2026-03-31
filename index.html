@@ -8,38 +8,42 @@
 body{margin:0;padding:0;font-family:Georgia,serif;background:#fdf6e3;}
 #bookWrapper{max-width:900px;margin:6rem auto 2rem auto;padding:1rem;background:#fdf6e3;} 
 #bookContainer{min-height:60vh;}
-p.sentence{margin:1em 0;cursor:pointer;line-height:1.6;font-size:1rem;transition:background 0.2s;}
+p.sentence{margin:1em 0;cursor:pointer;line-height:1.6;font-size:1rem;}
 p.sentence.highlight{background:rgba(255,230,180,0.45);}
-.tooltip{position:absolute;background:#fff8dc;border:1px solid #d4c29d;padding:6px 10px;border-radius:6px;box-shadow:0 6px 12px rgba(0,0,0,0.12);display:none;max-width:46ch;font-size:0.95rem;z-index:100;}
-/* Фиксированные кнопки */
+.tooltip{position:absolute;background:#fff8dc;border:1px solid #d4c29d;padding:6px 10px;border-radius:6px;display:none;}
 #controls{
-  position:fixed;
-  top:0; left:0;
-  width:100%;
-  background:#fdf6e3;
-  padding:0.5rem 1rem;
+  position:fixed; top:0; left:0; width:100%;
+  background:#fdf6e3; padding:0.5rem 1rem;
   box-shadow:0 2px 6px rgba(0,0,0,0.12);
-  z-index:1000;
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
+  z-index:1000; display:flex; flex-wrap:wrap;
 }
-button,input,label{margin:0.3rem;}
+button,input,label,select{margin:0.3rem;}
 </style>
 </head>
 <body>
 
 <div id="controls">
   <input type="file" id="fileInput" accept=".json">
-  <button id="loadLocalBtn">Загрузить локально</button>
-  <button id="loadServerBtn">Обзор сервера</button>
-  <button id="readBtn">▶ Чтение</button>
-  <button id="pauseBtn">⏸/▶</button>
+  <button id="loadLocalBtn">Загрузить</button>
+
+  <select id="serverSelect">
+    <option value="">— Vælg en bog —</option>
+    <option value="1.json">Tre fra skoven — Yuri Nikitin</option>
+    <option value="2.json">Tre i sandene — Yuri Nikitin</option>
+    <option value="3.json">Tre og guderne — Yuri Nikitin</option>
+    <option value="4.json">Tre i dalen — Yuri Nikitin</option>
+  </select>
+
+  <button id="savePosBtn">💾 Запомнить</button>
+  <button id="loadPosBtn">📍 Перейти</button>
+
+  <button id="readBtn">▶</button>
+  <button id="pauseBtn">⏸</button>
+
   <label>Скорость: <span id="rateVal">0.75</span></label>
   <input type="range" id="rateSlider" min="0.1" max="1.5" step="0.05" value="0.75">
 </div>
 
-<div id="serverFiles" style="margin:0.5rem 0; padding-top:4rem;"></div>
 <div id="bookWrapper">
   <h2 id="titleText">— Выберите книгу —</h2>
   <div id="bookContainer"></div>
@@ -50,8 +54,9 @@ button,input,label{margin:0.3rem;}
 <script>
 const fileInput = document.getElementById('fileInput');
 const loadLocalBtn = document.getElementById('loadLocalBtn');
-const loadServerBtn = document.getElementById('loadServerBtn');
-const serverFiles = document.getElementById('serverFiles');
+const serverSelect = document.getElementById('serverSelect');
+const savePosBtn = document.getElementById('savePosBtn');
+const loadPosBtn = document.getElementById('loadPosBtn');
 const bookContainer = document.getElementById('bookContainer');
 const readBtn = document.getElementById('readBtn');
 const pauseBtn = document.getElementById('pauseBtn');
@@ -64,13 +69,13 @@ let sentencesDA=[],translationsRU=[];
 let ttsRate = parseFloat(rateSlider.value);
 let readingIndex=0,reading=false,paused=false;
 
-// --- Ползунок скорости ---
+// скорость
 rateSlider.oninput = ()=>{
   ttsRate=parseFloat(rateSlider.value);
   rateVal.textContent=ttsRate.toFixed(2);
 };
 
-// --- Локальная загрузка ---
+// локальный файл
 loadLocalBtn.onclick = ()=>{
   const f = fileInput.files[0];
   if(!f) return;
@@ -79,46 +84,15 @@ loadLocalBtn.onclick = ()=>{
   reader.readAsText(f);
 };
 
-// --- Обзор файлов на сервере ---
-// --- Список книг для выпадающего меню ---
-const serverBooks = [
-  { file: "1.json", title: "Tre fra skoven — Yuri Nikitin" },
-  { file: "2.json", title: "Tre i sandene — Yuri Nikitin" },
-  { file: "3.json", title: "Tre og guderne — Yuri Nikitin" },
-  { file: "4.json", title: "Tre i dalen — Yuri Nikitin" }
-];
-
-// Создаём <select> внутри serverFiles
-loadServerBtn.onclick = () => {
-  serverFiles.innerHTML = ""; // очищаем
-  const select = document.createElement("select");
-  const defaultOption = document.createElement("option");
-  defaultOption.textContent = "— Vælg en bog —";
-  defaultOption.value = "";
-  select.appendChild(defaultOption);
-
-  serverBooks.forEach(b => {
-    const opt = document.createElement("option");
-    opt.value = b.file;
-    opt.textContent = b.title;
-    select.appendChild(opt);
-  });
-
-  select.onchange = async () => {
-    if (!select.value) return;
-    try {
-      const resp = await fetch(select.value);
-      const text = await resp.text();
-      processText(text, select.value);
-    } catch(e) {
-      alert("Fejl ved indlæsning af fil: " + e);
-    }
-  };
-
-  serverFiles.appendChild(select);
+// выбор книги
+serverSelect.onchange = async ()=>{
+  if(!serverSelect.value) return;
+  const resp = await fetch(serverSelect.value);
+  const text = await resp.text();
+  processText(text,serverSelect.value);
 };
 
-
+// обработка текста
 function processText(text, filename){
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   sentencesDA=[]; translationsRU=[];
@@ -129,10 +103,11 @@ function processText(text, filename){
       translationsRU.push({id:obj.sentence_id,text:obj.rus});
     }catch(e){}
   }
-  titleText.textContent=filename||'book.json';
+  titleText.textContent=filename;
   render();
 }
 
+// рендер
 function render(){
   bookContainer.innerHTML="";
   sentencesDA.forEach(s=>{
@@ -144,46 +119,38 @@ function render(){
   });
 }
 
-// --- Tooltip (отдельно от TTS) ---
-// Сенсор: долгий тап
-let tapTimer=null;
-bookContainer.addEventListener('touchstart', e=>{
-  const p=e.target.closest('p.sentence');
-  if(!p) return;
-  tapTimer=setTimeout(()=>{
-    const tr=translationsRU.find(t=>t.id==p.dataset.id);
-    if(tr){
-      tooltip.style.display='block';
-      const rect=p.getBoundingClientRect();
-      tooltip.style.left=rect.left+'px';
-      tooltip.style.top=(rect.bottom+window.scrollY)+'px';
-      tooltip.textContent=tr.text; // русский
-    }
-  },500);
-});
-bookContainer.addEventListener('touchend', e=>{
-  clearTimeout(tapTimer);
-  tooltip.style.display='none';
-});
+// сохранить позицию
+savePosBtn.onclick = ()=>{
+  const paragraphs = document.querySelectorAll("p.sentence");
+  if(!paragraphs.length) return;
 
-// Десктоп: наведение мышью
-bookContainer.addEventListener('mouseover', e=>{
-  const p=e.target.closest('p.sentence');
-  if(!p) return;
-  const tr=translationsRU.find(t=>t.id==p.dataset.id);
-  if(tr){
-    const rect=p.getBoundingClientRect();
-    tooltip.style.left=rect.left+'px';
-    tooltip.style.top=(rect.bottom+window.scrollY)+'px';
-    tooltip.textContent=tr.text; // русский
-    tooltip.style.display='block';
-  }
-});
-bookContainer.addEventListener('mouseout', e=>{
-  tooltip.style.display='none';
-});
+  let closestIndex=0, min=Infinity;
+  paragraphs.forEach((p,i)=>{
+    const d=Math.abs(p.getBoundingClientRect().top - window.innerHeight/3);
+    if(d<min){min=d;closestIndex=i;}
+  });
 
-// --- Клик на предложение: начать чтение с него ---
+  const key = "pos_" + (serverSelect.value || titleText.textContent);
+  localStorage.setItem(key, closestIndex);
+
+  alert("Сохранено 👍");
+};
+
+// перейти
+loadPosBtn.onclick = ()=>{
+  const key = "pos_" + (serverSelect.value || titleText.textContent);
+  const i = parseInt(localStorage.getItem(key));
+  if(isNaN(i)) return alert("Нет позиции");
+
+  const p = document.querySelectorAll("p.sentence")[i];
+  if(!p) return;
+
+  document.querySelectorAll(".highlight").forEach(e=>e.classList.remove("highlight"));
+  p.classList.add("highlight");
+  p.scrollIntoView({behavior:"smooth",block:"center"});
+};
+
+// клик читать
 bookContainer.addEventListener('click', e=>{
   const p=e.target.closest('p.sentence');
   if(!p) return;
@@ -193,24 +160,23 @@ bookContainer.addEventListener('click', e=>{
   highlightNext();
 });
 
-// --- Пауза/возобновление ---
+// пауза
 pauseBtn.onclick = ()=>{
   if(!reading) return;
   paused=!paused;
-  if(paused) speechSynthesis.pause();
-  else speechSynthesis.resume();
+  paused?speechSynthesis.pause():speechSynthesis.resume();
 };
 
-// --- Подсветка и чтение ---
+// чтение
 function highlightNext(){
   if(!reading || paused) return;
-  const paragraphs = bookContainer.querySelectorAll("p.sentence");
-  if(readingIndex>0) paragraphs[readingIndex-1].classList.remove("highlight");
-  if(readingIndex>=paragraphs.length){ reading=false; return; }
+  const ps = document.querySelectorAll("p.sentence");
+  if(readingIndex>0) ps[readingIndex-1].classList.remove("highlight");
+  if(readingIndex>=ps.length){reading=false;return;}
 
-  const p = paragraphs[readingIndex];
+  const p=ps[readingIndex];
   p.classList.add("highlight");
-  p.scrollIntoView({behavior:"smooth",block:"center"});
+  p.scrollIntoView({block:"center"});
 
   speakSentence(p.textContent, ()=>{
     readingIndex++;
@@ -218,26 +184,26 @@ function highlightNext(){
   });
 }
 
-// --- Равномерная TTS ---
-function speakSentence(text, callback){
-  const phrases = text.split(/([,;:.!?])/).reduce((acc, cur)=>{
-    if(/[.,;:!?]/.test(cur)) acc[acc.length-1]+=cur;
-    else acc.push(cur.trim());
-    return acc;
+// TTS
+function speakSentence(text, cb){
+  const parts=text.split(/([,;:.!?])/).reduce((a,c)=>{
+    if(/[.,;:!?]/.test(c)) a[a.length-1]+=c;
+    else a.push(c.trim());
+    return a;
   },[]).filter(s=>s);
+
   let i=0;
-  const next = ()=>{
-    if(i>=phrases.length){ callback(); return; }
-    const u = new SpeechSynthesisUtterance(phrases[i]);
+  const next=()=>{
+    if(i>=parts.length){cb();return;}
+    const u=new SpeechSynthesisUtterance(parts[i]);
     u.lang='da-DK';
-    u.rate = ttsRate;
-    u.onend = ()=>{ i++; next(); };
+    u.rate=ttsRate;
+    u.onend=()=>{i++;next();};
     speechSynthesis.speak(u);
   };
   next();
 }
 
-// --- Кнопка чтения с начала ---
 readBtn.onclick = ()=>{
   readingIndex=0; reading=true; paused=false;
   speechSynthesis.cancel();
